@@ -1,4 +1,4 @@
-name: Dokku Deploy
+name: delivery
 
 on:
   push:
