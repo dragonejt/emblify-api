@@ -12,6 +12,8 @@ dj-database-url = "*"
 psycopg2 = "*"
 whitenoise = "*"
 djangorestframework = "*"
+pyyaml = "*"
+uritemplate = "*"
 
 [dev-packages]
 pylint = "*"
