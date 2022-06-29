@@ -14,9 +14,14 @@ whitenoise = "*"
 djangorestframework = "*"
 pyyaml = "*"
 uritemplate = "*"
+ua-parser = "*"
+user-agents = "*"
+django-user-agents = "*"
+requests = "*"
 
 [dev-packages]
 pylint = "*"
+autopep8 = "*"
 
 [requires]
 python_version = "*"
