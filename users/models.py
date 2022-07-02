@@ -17,35 +17,35 @@ class DiscordIntegration(models.Model):
     user_email = models.CharField(max_length=100)
     user_name = models.CharField(max_length=100)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.user_id
 
-    def create(self, code):
-        access_token = self.exchange_code(code)["access_token"]
+    def create(self, code: str, ext: str):
+        access_token = self.exchange_code(code, ext)["access_token"]
         user_info = self.get_user_info(access_token)
         self.user_id = user_info["id"]
         self.user_email = user_info["email"]
         self.user_name = user_info["username"]
 
-    def equals(self, oauth_integration):
-        if type(self) == type(oauth_integration) and self.user_id == oauth_integration.user_id:
+    def equals(self, discord_integration: "DiscordIntegration") -> bool:
+        if type(self) == type(discord_integration) and self.user_id == discord_integration.user_id:
             return True
         return False
 
-    def exchange_code(self, code):
+    def exchange_code(self, code: str, ext: str) -> str:
         response = requests.post(ENDPOINT+"/oauth2/token", data={
             'client_id': CLIENT_ID,
             'client_secret': CLIENT_SECRET,
             'grant_type': 'authorization_code',
             'code': code,
-            'redirect_uri': REDIRECT_URI
+            'redirect_uri': REDIRECT_URI + ext
         }, headers={
             'Content-Type': 'application/x-www-form-urlencoded'
         })
         response.raise_for_status()
         return response.json()
 
-    def get_user_info(self, access_token):
+    def get_user_info(self, access_token: str) -> dict:
         response = requests.get(ENDPOINT+"/users/@me", headers={
             "Authorization": "Bearer " + access_token
         })
@@ -59,3 +59,6 @@ class EmblifyUser(models.Model):
     discord_integration = models.OneToOneField(
         DiscordIntegration, on_delete=models.CASCADE, null=True, blank=True)
     reddit_username = models.CharField(max_length=100)
+
+    def __str__(self) -> str:
+        return str(self.user)
