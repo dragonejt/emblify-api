@@ -9,7 +9,8 @@ import requests
 ENDPOINT = "https://discord.com/api"
 CLIENT_ID = "986703621771100220"
 CLIENT_SECRET = os.getenv("CLIENT_SECRET")
-REDIRECT_URI = os.getenv("OAUTH_REDIRECT_URI")
+WEB_OAUTH_REDIRECT = "https://emblify.me/oauth"
+MOBILE_OAUTH_REDIRECT = "emblify://oauth"
 
 
 class DiscordIntegration(models.Model):
@@ -20,25 +21,43 @@ class DiscordIntegration(models.Model):
     def __str__(self) -> str:
         return self.user_id
 
-    def create(self, code: str, ext: str):
-        access_token = self.exchange_code(code, ext)["access_token"]
+    def __eq__(self, discord_integration: "DiscordIntegration") -> bool:
+        if isinstance(discord_integration, type(self)) and self.user_id == discord_integration.user_id:
+            return True
+        return False
+
+    def create(self, code: str, platform: str) -> str:
+        token_response = self.exchange_code(code, platform)
+        access_token = token_response["access_token"]
+        refresh_token = token_response["refresh_token"]
+
         user_info = self.get_user_info(access_token)
         self.user_id = user_info["id"]
         self.user_email = user_info["email"]
         self.user_name = user_info["username"]
 
-    def equals(self, discord_integration: "DiscordIntegration") -> bool:
-        if type(self) == type(discord_integration) and self.user_id == discord_integration.user_id:
-            return True
-        return False
+        return refresh_token
 
-    def exchange_code(self, code: str, ext: str) -> str:
+    def create_from_token(self, refresh_token: str) -> str:
+        token_response = self.refresh_token(refresh_token)
+        access_token = token_response["access_token"]
+        refresh_token = token_response["refresh_token"]
+
+        user_info = self.get_user_info(access_token)
+        self.user_id = user_info["id"]
+        self.user_email = user_info["email"]
+        self.user_name = user_info["username"]
+
+        return refresh_token
+
+
+    def exchange_code(self, code: str, platform: str) -> str:
         response = requests.post(ENDPOINT+"/oauth2/token", data={
             'client_id': CLIENT_ID,
             'client_secret': CLIENT_SECRET,
             'grant_type': 'authorization_code',
             'code': code,
-            'redirect_uri': REDIRECT_URI + ext
+            'redirect_uri': MOBILE_OAUTH_REDIRECT if platform == "mobile" else WEB_OAUTH_REDIRECT
         }, headers={
             'Content-Type': 'application/x-www-form-urlencoded'
         })
@@ -51,6 +70,18 @@ class DiscordIntegration(models.Model):
         })
         response.raise_for_status()
         return response.json()
+
+    def refresh_token(self, refresh_token: str) -> dict:
+        r = requests.post(ENDPOINT+"/oauth2/token", data={
+            'client_id': CLIENT_ID,
+            'client_secret': CLIENT_SECRET,
+            'grant_type': 'refresh_token',
+            'refresh_token': refresh_token
+        }, headers={
+            'Content-Type': 'application/x-www-form-urlencoded'
+        })
+        r.raise_for_status()
+        return r.json()
 
 
 class EmblifyUser(models.Model):
