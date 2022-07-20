@@ -11,7 +11,7 @@ from users.models import EmblifyUser, DiscordIntegration
 
 
 # Create your views here.
-CUSTOM_URLS = ["oauth", "login", "register", "activate",
+CUSTOM_URLS = ["oauth", "login", "register", "activate", "exchange",
                "logout", "update", "unlink", "close", "@me"]
 
 # API Views
@@ -41,16 +41,18 @@ def read(request: Request, username: str) -> Response:
 @permission_classes([AllowAny])
 def oauth(request: Request) -> Response:
     discord_integration = DiscordIntegration()
+    refresh_token = discord_integration.create(
+        request.data["code"], request.data["platform"])
     user = get_user_from_discord(discord_integration)
-    refresh_token = discord_integration.create(request.data["Code"], request.data["Platform"])
 
     if user is None:
-        if request.user.is_authenticated: # Link discord account to existing account
+        if request.user.is_authenticated:  # Link discord account to existing account
             user = request.user
             discord_integration.save()
             emblify_user = EmblifyUser.objects.get(user=user)
             emblify_user.discord_integration = discord_integration
-        else: # Return a discord refresh token to accept when creating a new user
+            emblify_user.save()
+        else:  # Return a discord refresh token to accept when creating a new user
             return Response({
                 "discord_token": refresh_token
             }, status=status.HTTP_400_BAD_REQUEST)
@@ -83,8 +85,7 @@ def login(request: Request) -> Response:
             "Active": user.is_active
         }, status=status.HTTP_200_OK)
 
-    else:
-        return Response(status=status.HTTP_401_UNAUTHORIZED)
+    return Response(status=status.HTTP_401_UNAUTHORIZED)
 
 
 @api_view(["POST"])
@@ -94,7 +95,7 @@ def register(request: Request) -> Response:
         return Response(status=status.HTTP_400_BAD_REQUEST)
     user = create_user(
         request.data["username"], request.data["email"], password=request.data["password"])
-    emblify_user = EmblifyUser.objects.create(user=user)
+    emblify_user = EmblifyUser.objects.get(user=user)
     token = Token.objects.create(user=user)
 
     if "discord_token" in request.data:
@@ -105,7 +106,9 @@ def register(request: Request) -> Response:
             emblify_user.discord_integration = discord_integration
         else:
             return Response(status=status.HTTP_400_BAD_REQUEST)
-        
+
+    user.save()
+    emblify_user.save()
 
     return Response({
         "username": user.username,
@@ -116,11 +119,27 @@ def register(request: Request) -> Response:
 
 @api_view(["POST"])
 def activate(request: Request) -> Response:
-    activation_code = request.data["code"]
+    activation_code = request.data["activation_code"]
 
     request.user.is_active = True
 
+    request.user.save()
+
     return Response(status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def exchange(request: Request) -> Response:
+    if request.data["type"] == "token":
+        return Response({
+            "hash": token_to_hash(request.data["token"])
+        }, status=status.HTTP_400_BAD_REQUEST)
+    elif request.data["type"] == "hash":
+        return Response({
+            "token": hash_to_token(request.data["username"], request.data["hash"])
+        })
+    return Response(status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(["GET"])
@@ -140,6 +159,8 @@ def update(request: Request) -> Response:
         password_changed = True
     if request.data["email"] != None:
         request.user.email = request.data["email"]
+
+    request.user.save()
 
     return Response({
         "username": request.user.username,
@@ -162,6 +183,9 @@ def close(request: Request) -> Response:
     emblify_user = EmblifyUser.objects.get(user=request.user)
     emblify_user.is_private = True
 
+    request.user.save()
+    emblify_user.save()
+
     return Response(status=status.HTTP_200_OK)
 
 # Helper Functions
@@ -169,7 +193,7 @@ def close(request: Request) -> Response:
 
 def get_user_from_discord(discord_integration: DiscordIntegration) -> User:
     for emblify_user in EmblifyUser.objects.all():
-        if emblify_user.discord_integration == discord_integration:
+        if discord_integration.equals(emblify_user.discord_integration):
             return emblify_user.user
 
 
@@ -180,12 +204,14 @@ def create_user(username: str, email: str, password: str = None, discord_integra
         user=user, discord_integration=discord_integration)
     user.is_active = False
     send_activation_email(user)
+    user.save()
 
     return user
 
 
 def send_activation_email(user: User) -> None:
     user.is_active = True
+    user.save()
 
 
 def valid_username(username: str) -> bool:
@@ -201,12 +227,12 @@ def valid_username(username: str) -> bool:
 
 def token_to_hash(token: str) -> str:
     token_hash = make_password(token).split('$')
-    return token_hash[-2] + '$' + token_hash[-1]
+    return "{}${}".format(token_hash[-2], token_hash[-1])
 
 
 def hash_to_token(username: str, token_hash: str) -> str:
     user = User.objects.get(username=username)
-    token = Token.objects.get(user=user).key
+    token = Token.objects.get(user=user)
 
-    if check_password(token, "pbkdf2_sha256$320000$"+token_hash):
-        return token
+    if check_password(token, "pbkdf2_sha256$320000${}".format(token_hash)):
+        return token.key

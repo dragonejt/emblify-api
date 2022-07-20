@@ -21,8 +21,8 @@ class DiscordIntegration(models.Model):
     def __str__(self) -> str:
         return self.user_id
 
-    def __eq__(self, discord_integration: "DiscordIntegration") -> bool:
-        if isinstance(discord_integration, type(self)) and self.user_id == discord_integration.user_id:
+    def equals(self, discord_integration: "DiscordIntegration") -> bool:
+        if isinstance(discord_integration, type(self)) and self.user_id == discord_integration.user_id and self.user_name == discord_integration.user_name and self.user_email == discord_integration.user_email:
             return True
         return False
 
@@ -49,7 +49,6 @@ class DiscordIntegration(models.Model):
         self.user_name = user_info["username"]
 
         return refresh_token
-
 
     def exchange_code(self, code: str, platform: str) -> str:
         response = requests.post(ENDPOINT+"/oauth2/token", data={
