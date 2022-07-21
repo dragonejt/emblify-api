@@ -369,6 +369,28 @@ class TestAPIViews(APITestCase):
         self.assertEqual(response.status_code, views.status.HTTP_200_OK)
         self.assertRaises(views.Token.DoesNotExist)
 
+    def test_update(self):
+        user = views.create_user(
+            user_info["username"], user_info["email"], user_info["password"])
+        token = views.Token.objects.create(user=user)
+
+        new_user_data = {
+            "username": get_random_string(10),
+            "old_password": user_info["password"],
+            "password": get_random_string(15),
+            "email": get_random_string(5) + "@test.com"
+        }
+
+        response = self.client.post(
+            "/user/update", data=new_user_data, format="json", HTTP_AUTHORIZATION="Token "+token.key)
+
+        user = views.User.objects.get(username=new_user_data["username"], email=new_user_data["email"])
+
+        self.assertEqual(response.status_code, views.status.HTTP_200_OK)
+        self.assertEqual(user.username, new_user_data["username"])
+        self.assertTrue(views.check_password(new_user_data["password"], user.password))
+        self.assertEqual(user.email, new_user_data["email"])
+
     def test_unlink(self):
         discord_integration = models.DiscordIntegration()
         discord_integration.user_id = user_info["id"]
